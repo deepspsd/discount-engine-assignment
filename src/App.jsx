@@ -10,19 +10,25 @@ import CsvUploader from './components/CsvUploader.jsx'
 import DataTable from './components/DataTable.jsx'
 import ErrorBanner from './components/ErrorBanner.jsx'
 import { parseRulesCSV, parseCartCSV } from './engine/csvParser.js'
-import { processCart, cartTotal } from './engine/discountEngine.js'
+import { priceCart } from './engine/discountEngine.js'
 
 // ── Column definitions ───────────────────────────────────────────
 
 const RULES_COLUMNS = [
   { key: 'ruleId',    label: 'Rule ID' },
   { key: 'scope',     label: 'Scope',      render: (v) => v.charAt(0).toUpperCase() + v.slice(1) },
-  { key: 'appliesTo', label: 'Applies To' },
+  { key: 'appliesTo', label: 'Applies To', render: (v, row) => (row.scope === 'cart' ? 'Entire cart' : v) },
   { key: 'type',      label: 'Type',       render: (v) => v.charAt(0).toUpperCase() + v.slice(1) },
   {
     key: 'value',
     label: 'Value',
     render: (v, row) => row.type === 'percentage' ? `${v}% off` : `Rs.${v} off`,
+  },
+  {
+    key: 'minCartValue',
+    label: 'Condition',
+    render: (v, row) =>
+      row.scope === 'cart' ? `Cart total ≥ Rs.${v.toLocaleString('en-IN')}` : '—',
   },
   { key: 'stackable', label: 'Stackable',  render: (v) => (v ? 'Yes' : 'No') },
 ]
@@ -94,6 +100,21 @@ const S = {
     gap: '1rem', marginTop: '0.75rem', paddingTop: '0.75rem',
     borderTop: '2px solid #131A48',
   },
+  summaryRow: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    marginTop: '0.75rem', padding: '0.45rem 0.6rem', fontSize: 13, color: '#131A48',
+  },
+  summaryLabel: { fontWeight: 600 },
+  summaryValue: { fontWeight: 600 },
+  offerRow: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem',
+    padding: '0.5rem 0.6rem', background: '#f0faf2', border: '1px solid #cfe8d4',
+    borderRadius: 4, fontSize: 13, marginTop: 4,
+  },
+  offerLabel: { fontWeight: 700, color: '#1e5c2c' },
+  offerCondition: { color: '#666', fontSize: 11, marginLeft: 8 },
+  offerValue: { fontWeight: 700, color: '#1e5c2c', whiteSpace: 'nowrap' },
+  lockedHint: { textAlign: 'right', fontSize: 11, color: '#888', marginTop: 6 },
   totalLabel: { fontWeight: 700, fontSize: 14, color: '#131A48' },
   totalValue: { fontWeight: 700, fontSize: 16, color: '#131A48' },
   tag: (color, bg) => ({
@@ -134,8 +155,7 @@ export default function App() {
   }
 
   function handleCalculate() {
-    const res = processCart(cartItems, rules)
-    setResults(res)
+    setResults(priceCart(cartItems, rules))
   }
 
   const canCalculate = rules.length > 0 && cartItems.length > 0
@@ -217,11 +237,35 @@ export default function App() {
         {results && (
           <div style={S.section}>
             <div style={S.sectionTitle}>Cart Summary</div>
-            <DataTable columns={RESULTS_COLUMNS} rows={results} />
+            <DataTable columns={RESULTS_COLUMNS} rows={results.items} />
+
+            {/* Cart-level offers sit below the items: they belong to the cart, not to any one item */}
+            {results.cartOffer.lines.length > 0 && (
+              <div style={S.summaryRow}>
+                <span style={S.summaryLabel}>Cart total before offer</span>
+                <span style={S.summaryValue}>Rs.{results.subtotal.toLocaleString('en-IN')}</span>
+              </div>
+            )}
+            {results.cartOffer.lines.map((line) => (
+              <div key={line.ruleId} style={S.offerRow}>
+                <span>
+                  <span style={S.offerLabel}>{line.label}</span>
+                  <span style={S.offerCondition}>{line.condition}</span>
+                </span>
+                <span style={S.offerValue}>−Rs.{line.discount.toLocaleString('en-IN')}</span>
+              </div>
+            ))}
+
             <div style={S.totalRow}>
-              <span style={S.totalLabel}>Cart Total</span>
-              <span style={S.totalValue}>Rs.{cartTotal(results).toLocaleString('en-IN')}</span>
+              <span style={S.totalLabel}>
+                {results.cartOffer.lines.length > 0 ? 'Final Cart Total' : 'Cart Total'}
+              </span>
+              <span style={S.totalValue}>Rs.{results.finalTotal.toLocaleString('en-IN')}</span>
             </div>
+
+            {results.cartOffer.lockedOffer && (
+              <div style={S.lockedHint}>{results.cartOffer.lockedOffer.hint}</div>
+            )}
           </div>
         )}
 
