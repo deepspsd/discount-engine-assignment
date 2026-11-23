@@ -4,7 +4,7 @@ A cart pricing engine for a marketplace checkout: it applies the best available 
 
 Built on the base repo for the Opptra FDE Intern assignment.
 
-**Live deployment:** _TODO: add the Vercel URL here before submitting_
+**Live deployment:** https://discount-engine-assignment-deepak.vercel.app/
 
 ## Run locally
 
