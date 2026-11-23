@@ -5,6 +5,9 @@
 
 import { parseRule } from './_lib/parseRule.js'
 
+// Room for one LLM call plus a short rate-limit retry.
+export const config = { maxDuration: 30 }
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST')

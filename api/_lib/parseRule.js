@@ -20,6 +20,10 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const DEFAULT_MODEL = 'openai/gpt-oss-20b'
 const TIMEOUT_MS = 15000
 
+// Free-tier keys are rate limited per minute. When the provider says to wait
+// only a moment, wait and try once more instead of making the user retry.
+const MAX_RETRY_WAIT_MS = 4000
+
 export const MAX_TEXT_LENGTH = 300
 const MAX_KNOWN_NAMES = 50
 const MAX_NAME_LENGTH = 60
@@ -82,15 +86,18 @@ const cleanNames = (list) =>
 
 const fail = (status, error, message) => ({ status, body: { error, message } })
 
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 /**
  * @param {{ text?: unknown, knownBrands?: unknown, knownPlatforms?: unknown }} input
  * @param {{ GROQ_API_KEY?: string, GROQ_MODEL?: string }} env
  * @param {typeof fetch} fetchImpl
+ * @param {(ms: number) => Promise<void>} sleep  injectable so tests do not wait
  * @returns {Promise<{ status: number, body: object }>}
  *   200 → { candidate }  the model's JSON, unvalidated
  *   4xx/5xx → { error, message }
  */
-export async function parseRule(input, env, fetchImpl = fetch) {
+export async function parseRule(input, env, fetchImpl = fetch, sleep = defaultSleep) {
   const text = typeof input?.text === 'string' ? input.text.trim() : ''
   if (text === '') {
     return fail(400, 'empty_text', 'Describe the discount rule first.')
@@ -110,32 +117,46 @@ export async function parseRule(input, env, fetchImpl = fetch) {
     `Rule description: """${text}"""`,
   ].join('\n')
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  const callLLM = async () => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+    try {
+      return await fetchImpl(GROQ_URL, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${env.GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: env.GROQ_MODEL || DEFAULT_MODEL,
+          temperature: 0,
+          max_completion_tokens: 1000,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userMessage },
+          ],
+          response_format: {
+            type: 'json_schema',
+            json_schema: { name: 'discount_rule', strict: true, schema: RESPONSE_SCHEMA },
+          },
+        }),
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  }
 
   let response
   try {
-    response = await fetchImpl(GROQ_URL, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: env.GROQ_MODEL || DEFAULT_MODEL,
-        temperature: 0,
-        max_completion_tokens: 1000,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userMessage },
-        ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: { name: 'discount_rule', strict: true, schema: RESPONSE_SCHEMA },
-        },
-      }),
-    })
+    response = await callLLM()
+    if (response.status === 429) {
+      const waitMs = Number(response.headers?.get?.('retry-after')) * 1000
+      if (Number.isFinite(waitMs) && waitMs > 0 && waitMs <= MAX_RETRY_WAIT_MS) {
+        await sleep(waitMs)
+        response = await callLLM()
+      }
+    }
   } catch (err) {
     const timedOut = err?.name === 'AbortError'
     return fail(
@@ -145,8 +166,6 @@ export async function parseRule(input, env, fetchImpl = fetch) {
         ? 'The rule parser took too long to answer. Try again.'
         : 'Could not reach the rule parser. Check your connection and try again.'
     )
-  } finally {
-    clearTimeout(timer)
   }
 
   if (!response.ok) {

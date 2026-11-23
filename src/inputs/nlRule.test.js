@@ -250,6 +250,36 @@ describe('parseRule — server side', () => {
     expect(out.body.error).toBe('llm_bad_output')
   })
 
+  it('waits and retries once when the provider asks for a short pause', async () => {
+    const candidate = ok({ scope: 'platform', appliesTo: 'Noon', type: 'percentage', value: 10, stackable: false, minCartValue: null })
+    const replies = [
+      { ok: false, status: 429, headers: new Headers({ 'retry-after': '2' }), text: async () => '' },
+      { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify(candidate) } }] }) },
+    ]
+    const waits = []
+    const out = await parseRule({ text: '10% off Noon' }, env, async () => replies.shift(), async (ms) => { waits.push(ms) })
+    expect(waits).toEqual([2000])
+    expect(out.status).toBe(200)
+  })
+
+  it('does not retry when the pause is long or still rate limited', async () => {
+    let calls = 0
+    const long = await parseRule({ text: '10% off Noon' }, env, async () => {
+      calls++
+      return { ok: false, status: 429, headers: new Headers({ 'retry-after': '40' }), text: async () => '' }
+    }, async () => {})
+    expect(calls).toBe(1)
+    expect(long.status).toBe(429)
+
+    calls = 0
+    const again = await parseRule({ text: '10% off Noon' }, env, async () => {
+      calls++
+      return { ok: false, status: 429, headers: new Headers({ 'retry-after': '1' }), text: async () => '' }
+    }, async () => {})
+    expect(calls).toBe(2)
+    expect(again.status).toBe(429)
+  })
+
   it('maps provider errors without leaking their body', async () => {
     const limited = await parseRule({ text: '10% off Noon' }, env, async () => ({ ok: false, status: 429, text: async () => '' }))
     expect(limited.status).toBe(429)
