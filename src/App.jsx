@@ -11,6 +11,9 @@ import DataTable from './components/DataTable.jsx'
 import ErrorBanner from './components/ErrorBanner.jsx'
 import { parseRulesCSV, parseCartCSV } from './engine/csvParser.js'
 import { priceCart } from './engine/discountEngine.js'
+import NlRuleInput from './components/NlRuleInput.jsx'
+import { knownNames } from './inputs/nlRuleInput.js'
+import { nextRuleId } from './inputs/ruleCandidate.js'
 
 // ── Column definitions ───────────────────────────────────────────
 
@@ -84,6 +87,7 @@ const S = {
   main:    { maxWidth: 960, margin: '0 auto', padding: '1.8rem 1.5rem' },
   section: { background: '#fff', border: '1px solid #CECECE', borderRadius: 6, padding: '1.2rem 1.4rem', marginBottom: '1.2rem' },
   sectionTitle: { fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 14, color: '#131A48', marginBottom: '0.7rem', paddingBottom: 6, borderBottom: '2px solid #FF5800', display: 'inline-block' },
+  subTitle: { fontWeight: 700, fontSize: 12, color: '#131A48', margin: '1rem 0 0.4rem' },
   grid2:   { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' },
   btn:     {
     background: '#FF5800', color: '#fff', border: 'none', borderRadius: 4,
@@ -158,6 +162,16 @@ export default function App() {
     setResults(priceCart(cartItems, rules))
   }
 
+  // A rule the user described in plain English and confirmed. It joins the
+  // active rules like any uploaded one, and the current cart is re-priced with it.
+  function handleRuleConfirmed(rule) {
+    const nextRules = [...rules, { ruleId: nextRuleId(rules), ...rule }]
+    setRules(nextRules)
+    if (cartItems.length > 0) {
+      setResults(priceCart(cartItems, nextRules))
+    }
+  }
+
   const canCalculate = rules.length > 0 && cartItems.length > 0
 
   // ── Render ──
@@ -193,6 +207,8 @@ export default function App() {
                 <DataTable columns={RULES_COLUMNS} rows={rules} />
               </div>
             )}
+            <div style={S.subTitle}>Or describe a rule</div>
+            <NlRuleInput context={knownNames(cartItems, rules)} onConfirm={handleRuleConfirmed} />
           </div>
 
           {/* Cart upload */}
