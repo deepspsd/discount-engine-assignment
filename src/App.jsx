@@ -15,11 +15,12 @@ import NlRuleInput from './components/NlRuleInput.jsx'
 import { knownNames } from './inputs/nlRuleInput.js'
 import { nextRuleId } from './inputs/ruleCandidate.js'
 import { CART_SOURCES } from './inputs/cartSources.js'
+import { offerStatus } from './ui/offerStatus.js'
 
 // ── Column definitions ───────────────────────────────────────────
 
 const RULES_COLUMNS = [
-  { key: 'ruleId',    label: 'Rule ID' },
+  { key: 'ruleId',    label: 'Rule ID', nowrap: true },
   { key: 'scope',     label: 'Scope',      render: (v) => v.charAt(0).toUpperCase() + v.slice(1) },
   { key: 'appliesTo', label: 'Applies To', render: (v, row) => (row.scope === 'cart' ? 'Entire cart' : v) },
   { key: 'type',      label: 'Type',       render: (v) => v.charAt(0).toUpperCase() + v.slice(1) },
@@ -38,7 +39,7 @@ const RULES_COLUMNS = [
 ]
 
 const CART_COLUMNS = [
-  { key: 'itemId',    label: 'Item' },
+  { key: 'itemId',    label: 'Item', nowrap: true },
   { key: 'product',   label: 'Product' },
   { key: 'brand',     label: 'Brand' },
   { key: 'platform',  label: 'Platform' },
@@ -46,7 +47,7 @@ const CART_COLUMNS = [
 ]
 
 const RESULTS_COLUMNS = [
-  { key: 'itemId',    label: 'Item' },
+  { key: 'itemId',    label: 'Item', nowrap: true },
   { key: 'product',   label: 'Product' },
   { key: 'basePrice', label: 'Base Price',  render: (v) => `Rs.${v.toLocaleString('en-IN')}` },
   { key: 'finalPrice',label: 'Final Price',
@@ -74,6 +75,14 @@ const RESULTS_COLUMNS = [
         {v}
       </span>
     ),
+  },
+  {
+    key: 'appliedRules',
+    label: 'Status',
+    render: (_v, row) => {
+      const status = offerStatus(row)
+      return <span style={S.tag(status.color, status.background)}>{status.label}</span>
+    },
   },
 ]
 
@@ -127,6 +136,7 @@ const S = {
   tag: (color, bg) => ({
     display: 'inline-block', fontSize: 10, fontWeight: 700, padding: '1px 6px',
     borderRadius: 20, background: bg, color, textTransform: 'uppercase', letterSpacing: '0.04em',
+    whiteSpace: 'nowrap',
   }),
 }
 
@@ -153,7 +163,9 @@ export default function App() {
     setRules(data)
     setRulesErr(errors)
     setRulesFileName(fileName)
-    setResults(null) // clear stale results
+    // Rules changed: re-price the cart already loaded, so the summary on
+    // screen never describes rules that are no longer active.
+    setResults(data.length > 0 && cartItems.length > 0 ? priceCart(cartItems, data) : null)
   }
 
   // One handler for every cart input. A source only has to produce
