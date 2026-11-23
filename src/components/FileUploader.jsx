@@ -1,13 +1,25 @@
 /**
- * CsvUploader.jsx
+ * FileUploader.jsx
  *
- * Renders a file upload area for a single CSV file.
- * Calls onLoad(rawText) when a file is selected.
+ * Renders a file upload area for a single file.
+ * Calls onLoad(content, fileName) when a file is selected. Content is a string
+ * by default, or an ArrayBuffer with readAs="arrayBuffer" (binary formats).
+ * Calls onError(message, fileName) if the browser cannot read the file.
  */
 
 import { useRef } from 'react'
 
-export default function CsvUploader({ label, description, onLoad, hasData, fileName }) {
+export default function FileUploader({
+  label,
+  description,
+  onLoad,
+  onError,
+  hasData,
+  fileName,
+  accept = '.csv',
+  readAs = 'text',
+  busy = false,
+}) {
   const inputRef = useRef(null)
 
   function handleFile(e) {
@@ -15,7 +27,12 @@ export default function CsvUploader({ label, description, onLoad, hasData, fileN
     if (!file) return
     const reader = new FileReader()
     reader.onload = (evt) => onLoad(evt.target.result, file.name)
-    reader.readAsText(file)
+    reader.onerror = () => onError?.('The file could not be read. Try uploading it again.', file.name)
+    if (readAs === 'arrayBuffer') {
+      reader.readAsArrayBuffer(file)
+    } else {
+      reader.readAsText(file)
+    }
     // Reset input so the same file can be re-uploaded
     e.target.value = ''
   }
@@ -35,7 +52,7 @@ export default function CsvUploader({ label, description, onLoad, hasData, fileN
       <input
         ref={inputRef}
         type="file"
-        accept=".csv"
+        accept={accept}
         style={{ display: 'none' }}
         onChange={handleFile}
       />
@@ -44,7 +61,7 @@ export default function CsvUploader({ label, description, onLoad, hasData, fileN
         <div>
           <div style={{ fontWeight: 700, fontSize: 13, color: '#131A48' }}>{label}</div>
           <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
-            {hasData ? fileName : description}
+            {busy ? 'Reading…' : hasData ? fileName : description}
           </div>
         </div>
         <div style={{ marginLeft: 'auto' }}>
