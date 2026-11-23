@@ -6,7 +6,9 @@
  * internal data shapes.
  *
  * Expected rules.csv columns:
- *   rule_id, scope, applies_to, type, value, stackable
+ *   rule_id, scope, applies_to, type, value, stackable, min_cart_value
+ *   (min_cart_value is optional as a column; it is required on rows with scope "cart",
+ *    where applies_to is left empty)
  *
  * Expected cart.csv columns:
  *   item_id, product, brand, platform, base_price
@@ -36,9 +38,12 @@ export function parseRulesCSV(csvText) {
     const rowNum = i + 2 // account for header row
     const missing = []
 
+    const isCartScope = (row.scope ?? '').trim().toLowerCase() === 'cart'
+
     if (!row.rule_id) missing.push('rule_id')
     if (!row.scope) missing.push('scope')
-    if (!row.applies_to) missing.push('applies_to')
+    // A cart rule covers the entire cart, so it has nothing to name here.
+    if (!row.applies_to && !isCartScope) missing.push('applies_to')
     if (!row.type) missing.push('type')
     if (row.value === undefined || row.value === '') missing.push('value')
     if (row.stackable === undefined || row.stackable === '') missing.push('stackable')
@@ -49,8 +54,8 @@ export function parseRulesCSV(csvText) {
     }
 
     const scope = row.scope.trim().toLowerCase()
-    if (scope !== 'brand' && scope !== 'platform') {
-      errors.push(`Row ${rowNum}: scope must be "brand" or "platform", got "${row.scope}"`)
+    if (scope !== 'brand' && scope !== 'platform' && scope !== 'cart') {
+      errors.push(`Row ${rowNum}: scope must be "brand", "platform" or "cart", got "${row.scope}"`)
       return
     }
 
@@ -66,17 +71,38 @@ export function parseRulesCSV(csvText) {
       return
     }
 
+    if (type === 'percentage' && value > 100) {
+      errors.push(`Row ${rowNum}: a percentage discount cannot exceed 100, got "${row.value}"`)
+      return
+    }
+
     const stackableStr = row.stackable.trim().toLowerCase()
     const stackable = stackableStr === 'true' || stackableStr === '1' || stackableStr === 'yes'
 
-    data.push({
+    const rule = {
       ruleId: row.rule_id.trim(),
       scope,
-      appliesTo: row.applies_to.trim(),
+      appliesTo: (row.applies_to ?? '').trim(),
       type,
       value,
       stackable,
-    })
+    }
+
+    // min_cart_value only means something for cart rules, and a cart rule is
+    // not usable without it — we will not guess a threshold on the customer's behalf.
+    if (scope === 'cart') {
+      const rawMin = (row.min_cart_value ?? '').trim()
+      const minCartValue = Number(rawMin)
+      if (rawMin === '' || !Number.isFinite(minCartValue) || minCartValue < 0) {
+        errors.push(
+          `Row ${rowNum}: a cart rule needs min_cart_value as a number of rupees (0 or more), got "${rawMin}"`
+        )
+        return
+      }
+      rule.minCartValue = minCartValue
+    }
+
+    data.push(rule)
   })
 
   return { data, errors }

@@ -1,0 +1,2 @@
+# Sample PDFs are fixtures with byte offsets inside them: never convert line endings.
+*.pdf binary
