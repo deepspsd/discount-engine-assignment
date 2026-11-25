@@ -6,6 +6,8 @@ Built on the base repo for the Opptra FDE Intern assignment.
 
 **Live deployment:** https://discount-engine-assignment-deepak.vercel.app/
 
+**Walkthrough video:** https://www.loom.com/share/2c3d4f7ce2fa4b3ebe6b8ec3beceaeba (recorded on the live deployment)
+
 ## Run locally
 
 ```bash
